@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Erlang C — Call Center Calculator</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: #f5f5f3; color: #1a1a18; min-height: 100vh; padding: 2rem 1rem; }
+  h1 { font-size: 18px; font-weight: 500; margin-bottom: 4px; }
+  .subtitle { font-size: 13px; color: #666; margin-bottom: 2rem; }
+  .ec-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; max-width: 900px; margin: 0 auto; }
+  @media (max-width: 640px) { .ec-grid { grid-template-columns: 1fr; } }
+  .sec-lbl { font-size: 11px; font-weight: 500; color: #888; letter-spacing: 0.07em; text-transform: uppercase; margin: 0 0 14px; }
+  .sl-group { margin-bottom: 1.25rem; }
+  .sl-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 5px; }
+  .sl-name { font-size: 13px; font-weight: 500; color: #1a1a18; }
+  .sl-val { font-size: 13px; font-weight: 500; color: #185FA5; font-family: 'Courier New', monospace; }
+  .sl-desc { font-size: 11px; color: #666; margin-top: 4px; line-height: 1.5; }
+  .sl-range { font-size: 10px; color: #999; margin-top: 2px; }
+  input[type=range] { width: 100%; accent-color: #185FA5; cursor: pointer; }
+  .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .mc { background: #ebebea; border-radius: 8px; padding: 11px 13px; }
+  .mc-lbl { font-size: 10px; color: #666; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 3px; }
+  .mc-val { font-size: 20px; font-weight: 500; font-family: 'Courier New', monospace; color: #1a1a18; line-height: 1.2; }
+  .mc-unit { font-size: 11px; color: #888; margin-top: 2px; }
+  .mc.info .mc-val { color: #185FA5; }
+  .mc.warn .mc-val { color: #854F0B; }
+  .mc.danger .mc-val { color: #A32D2D; }
+  .mc.ok .mc-val { color: #0F6E56; }
+  .bar-wrap { height: 5px; background: #d4d4d2; border-radius: 3px; margin-top: 8px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; transition: width 0.25s, background 0.25s; }
+  .notice { border-radius: 8px; padding: 9px 13px; font-size: 12px; margin-top: 14px; line-height: 1.5; display: none; }
+  .notice.warn { background: #FAEEDA; color: #854F0B; }
+  .notice.ok { background: #E1F5EE; color: #0F6E56; }
+  .notice.danger { background: #FCEBEB; color: #A32D2D; }
+  hr.div { border: none; border-top: 0.5px solid #d4d4d2; margin: 1.25rem 0; }
+  .chart-wrap { position: relative; height: 160px; margin-top: 1rem; }
+  .rec-box { margin-top: 14px; border: 0.5px solid #d4d4d2; border-radius: 8px; padding: 11px 13px; font-size: 12px; color: #666; }
+  .rec-box strong { color: #1a1a18; font-weight: 500; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #1a1a18; color: #e8e8e4; }
+    .sl-name { color: #e8e8e4; }
+    .mc { background: #2c2c2a; }
+    .mc-val { color: #e8e8e4; }
+    .bar-wrap { background: #444; }
+    .mc.info .mc-val { color: #85B7EB; }
+    .mc.ok .mc-val { color: #5DCAA5; }
+    .mc.warn .mc-val { color: #FAC775; }
+    .mc.danger .mc-val { color: #F09595; }
+    .notice.danger { background: #3a1f1f; color: #F09595; }
+    hr.div { border-color: #333; }
+    .rec-box { border-color: #444; color: #aaa; }
+    .rec-box strong { color: #e8e8e4; }
+  }
+</style>
+</head>
+<body>
+<div style="max-width:900px;margin:0 auto;">
+  <h1>Erlang C — Call Center Calculator</h1>
+  <p class="subtitle">Average call handling time &amp; staffing model for telecom customer service</p>
+
+  <div class="ec-grid">
+    <div>
+      <p class="sec-lbl">Input parameters</p>
+
+      <div class="sl-group">
+        <div class="sl-top">
+          <span class="sl-name">Call arrival rate</span>
+          <span class="sl-val" id="v-lambda">100 calls/hr</span>
+        </div>
+        <input type="range" min="10" max="500" step="5" value="100" id="s-lambda">
+        <div class="sl-desc">Calls reaching your center per hour (λ). Combine talk + abandonment to estimate peak load. Typical call centers: 50–300/hr.</div>
+        <div class="sl-range">Range: 10 – 500 calls/hr</div>
+      </div>
+
+      <div class="sl-group">
+        <div class="sl-top">
+          <span class="sl-name">Average handle time (AHT)</span>
+          <span class="sl-val" id="v-aht">240 s (4:00)</span>
+        </div>
+        <input type="range" min="30" max="900" step="10" value="240" id="s-aht">
+        <div class="sl-desc">Talk time + hold + after-call work (ACW) per call. Telecom support: typically 3–8 min. Billing queries run longer than tech support triage.</div>
+        <div class="sl-range">Range: 30 – 900 s</div>
+      </div>
+
+      <div class="sl-group">
+        <div class="sl-top">
+          <span class="sl-name">Active agents</span>
+          <span class="sl-val" id="v-agents">12 agents</span>
+        </div>
+        <input type="range" min="1" max="80" step="1" value="12" id="s-agents">
+        <div class="sl-desc">Simultaneous agents logged in and available. Does not include supervisors, breaks, or training. Erlang C requires this to exceed traffic load.</div>
+        <div class="sl-range">Range: 1 – 80 agents</div>
+      </div>
+
+      <div class="sl-group">
+        <div class="sl-top">
+          <span class="sl-name">Service level target time</span>
+          <span class="sl-val" id="v-slt">20 s</span>
+        </div>
+        <input type="range" min="5" max="120" step="5" value="20" id="s-slt">
+        <div class="sl-desc">The "T" in "X% of calls answered within T seconds". Industry standard is 20 s for telecom (the 80/20 rule). Some centers use 30 s.</div>
+        <div class="sl-range">Range: 5 – 120 s</div>
+      </div>
+    </div>
+
+    <div>
+      <p class="sec-lbl">Results</p>
+      <div class="metrics">
+        <div class="mc" id="mc-traffic">
+          <div class="mc-lbl">Traffic load</div>
+          <div class="mc-val" id="r-traffic">—</div>
+          <div class="mc-unit">Erlangs (A = λ × AHT/3600)</div>
+        </div>
+        <div class="mc" id="mc-util">
+          <div class="mc-lbl">Agent utilisation</div>
+          <div class="mc-val" id="r-util">—</div>
+          <div class="mc-unit">% of agent time busy</div>
+          <div class="bar-wrap"><div class="bar-fill" id="bar-util" style="width:0%"></div></div>
+        </div>
+        <div class="mc" id="mc-ec">
+          <div class="mc-lbl">P(wait) — Erlang C</div>
+          <div class="mc-val" id="r-ec">—</div>
+          <div class="mc-unit">probability caller queues</div>
+        </div>
+        <div class="mc" id="mc-sl">
+          <div class="mc-lbl">Service level</div>
+          <div class="mc-val" id="r-sl">—</div>
+          <div class="mc-unit">% answered within target time</div>
+          <div class="bar-wrap"><div class="bar-fill" id="bar-sl" style="width:0%"></div></div>
+        </div>
+        <div class="mc" id="mc-asa">
+          <div class="mc-lbl">Avg speed of answer</div>
+          <div class="mc-val" id="r-asa">—</div>
+          <div class="mc-unit">seconds average wait</div>
+        </div>
+        <div class="mc" id="mc-rec">
+          <div class="mc-lbl">Min stable agents</div>
+          <div class="mc-val" id="r-rec">—</div>
+          <div class="mc-unit">to keep queue finite (A + 1)</div>
+        </div>
+      </div>
+
+      <div class="notice" id="notice"></div>
+      <div class="rec-box" id="rec-box"></div>
+
+      <hr class="div">
+      <p class="sec-lbl">Service level vs agent count</p>
+      <div class="chart-wrap">
+        <canvas id="sl-chart"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+function erlangC(N, A) {
+  if (A <= 0 || N <= 0) return 0;
+  if (A >= N) return 1;
+  const logA = Math.log(A);
+  let logTerms = [0];
+  for (let k = 1; k < N; k++) logTerms.push(logTerms[k-1] + logA - Math.log(k));
+  const logLast = logTerms[N-1] + logA - Math.log(N) - Math.log(N - A);
+  const maxLog = Math.max(...logTerms, logLast);
+  const sumExp = logTerms.reduce((s, lt) => s + Math.exp(lt - maxLog), 0);
+  const lastExp = Math.exp(logLast - maxLog);
+  return lastExp / (sumExp + lastExp);
+}
+
+function serviceLevel(N, A, aht, T) {
+  if (A >= N) return 0;
+  const C = erlangC(N, A);
+  return 1 - C * Math.exp(-(N - A) * T / aht);
+}
+
+function asa(N, A, aht) {
+  if (A >= N) return Infinity;
+  return erlangC(N, A) * aht / (N - A);
+}
+
+function fmtAHT(s) {
+  const m = Math.floor(s / 60), sec = s % 60;
+  return `${s} s (${m}:${sec.toString().padStart(2, '0')})`;
+}
+
+let chart;
+
+function initChart() {
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const ctx = document.getElementById('sl-chart').getContext('2d');
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [{
+        label: 'Service Level %',
+        data: [],
+        borderColor: '#1D9E75',
+        backgroundColor: 'rgba(29,158,117,0.1)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 3,
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: {
+          title: { display: true, text: 'Agents', font: { size: 11 }, color: isDark ? '#aaa' : '#666' },
+          ticks: { font: { size: 11 }, color: isDark ? '#aaa' : '#666' },
+          grid: { color: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)' }
+        },
+        y: {
+          min: 0, max: 100,
+          title: { display: true, text: 'SL %', font: { size: 11 }, color: isDark ? '#aaa' : '#666' },
+          ticks: { font: { size: 11 }, color: isDark ? '#aaa' : '#666', callback: v => v + '%' },
+          grid: { color: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)' }
+        }
+      }
+    }
+  });
+}
+
+function updateChart(A, aht, T, currentN) {
+  const minN = Math.ceil(A) + 1;
+  const maxN = Math.max(minN + 20, currentN + 10);
+  const labels = [], data = [];
+  for (let n = minN; n <= maxN; n++) {
+    labels.push(n);
+    data.push(+(serviceLevel(n, A, aht, T) * 100).toFixed(1));
+  }
+  chart.data.labels = labels;
+  chart.data.datasets[0].data = data;
+  const refIdx = currentN - minN;
+  chart.data.datasets[0].pointBackgroundColor = labels.map((l, i) => i === refIdx ? '#1D9E75' : 'rgba(29,158,117,0.4)');
+  chart.data.datasets[0].pointRadius = labels.map((l, i) => i === refIdx ? 6 : 3);
+  chart.update();
+}
+
+function setMCClass(id, cls) {
+  document.getElementById(id).className = 'mc ' + (cls || '');
+}
+
+function compute() {
+  const lambda = +document.getElementById('s-lambda').value;
+  const aht = +document.getElementById('s-aht').value;
+  const N = +document.getElementById('s-agents').value;
+  const T = +document.getElementById('s-slt').value;
+
+  document.getElementById('v-lambda').textContent = lambda + ' calls/hr';
+  document.getElementById('v-aht').textContent = fmtAHT(aht);
+  document.getElementById('v-agents').textContent = N + ' agents';
+  document.getElementById('v-slt').textContent = T + ' s';
+
+  const A = lambda * aht / 3600;
+  const minN = Math.ceil(A) + 1;
+  const util = A / N;
+
+  document.getElementById('r-traffic').textContent = A.toFixed(2);
+  document.getElementById('r-rec').textContent = minN;
+
+  const notice = document.getElementById('notice');
+  const recBox = document.getElementById('rec-box');
+
+  if (util >= 1) {
+    document.getElementById('r-util').textContent = (util * 100).toFixed(0) + '%';
+    setMCClass('mc-util', 'danger');
+    document.getElementById('bar-util').style.width = '100%';
+    document.getElementById('bar-util').style.background = '#A32D2D';
+    document.getElementById('r-ec').textContent = '—';
+    document.getElementById('r-sl').textContent = '—';
+    document.getElementById('r-asa').textContent = '—';
+    setMCClass('mc-ec', ''); setMCClass('mc-sl', ''); setMCClass('mc-asa', '');
+    document.getElementById('bar-sl').style.width = '0%';
+    notice.style.display = 'block';
+    notice.className = 'notice danger';
+    notice.textContent = 'Queue is unstable: traffic load (' + A.toFixed(2) + ' Erl) exceeds agent capacity. Add at least ' + (minN - N) + ' more agent(s) to stabilise.';
+    recBox.innerHTML = '';
+    updateChart(A, aht, T, N);
+    return;
+  }
+
+  notice.style.display = 'none';
+
+  const utilPct = (util * 100).toFixed(1);
+  document.getElementById('r-util').textContent = utilPct + '%';
+  const utilBar = document.getElementById('bar-util');
+  utilBar.style.width = Math.min(util * 100, 100) + '%';
+  utilBar.style.background = util > 0.9 ? '#A32D2D' : util > 0.8 ? '#EF9F27' : '#185FA5';
+  setMCClass('mc-util', util > 0.85 ? 'warn' : 'info');
+
+  const C = erlangC(N, A);
+  document.getElementById('r-ec').textContent = (C * 100).toFixed(1) + '%';
+  setMCClass('mc-ec', C > 0.5 ? 'warn' : C > 0.2 ? 'info' : 'ok');
+
+  const sl = serviceLevel(N, A, aht, T);
+  const slPct = (sl * 100).toFixed(1);
+  document.getElementById('r-sl').textContent = slPct + '%';
+  const slBar = document.getElementById('bar-sl');
+  slBar.style.width = slPct + '%';
+  slBar.style.background = sl >= 0.8 ? '#1D9E75' : sl >= 0.6 ? '#EF9F27' : '#A32D2D';
+  setMCClass('mc-sl', sl >= 0.8 ? 'ok' : sl >= 0.6 ? 'warn' : 'danger');
+
+  const asaSec = asa(N, A, aht);
+  document.getElementById('r-asa').textContent = asaSec > 999 ? '>999' : asaSec.toFixed(0) + ' s';
+  setMCClass('mc-asa', asaSec < T ? 'ok' : asaSec < T * 3 ? 'warn' : 'danger');
+
+  let rec80N = minN;
+  while (rec80N <= 200 && serviceLevel(rec80N, A, aht, T) < 0.8) rec80N++;
+  let rec90N = minN;
+  while (rec90N <= 200 && serviceLevel(rec90N, A, aht, T) < 0.9) rec90N++;
+
+  recBox.innerHTML = `<strong>Recommendations:</strong> To hit 80% SL in ${T}s → <strong>${rec80N} agents</strong>. For 90% SL → <strong>${rec90N} agents</strong>. Current utilisation at ${utilPct}% ${util > 0.85 ? '— consider adding agents; burnout risk above 85%.' : util < 0.6 ? '— agents may be underutilised.' : '— healthy range.'}`;
+
+  updateChart(A, aht, T, N);
+}
+
+initChart();
+compute();
+
+['s-lambda', 's-aht', 's-agents', 's-slt'].forEach(id => {
+  document.getElementById(id).addEventListener('input', compute);
+});
+</script>
+</body>
+</html>
